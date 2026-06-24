@@ -1,0 +1,10 @@
+# Compiled binary
+ADHD 专注提醒.app/Contents/MacOS/FocusBar
+
+# macOS metadata
+.DS_Store
+*.app/.DS_Store
+
+# Xcode
+*.xcuserdata
+*.xcworkspace
