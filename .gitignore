@@ -1,10 +1,15 @@
+# Build artifacts
+ADHD 专注提醒.app/
+.claude/
+
 # Compiled binary
-ADHD 专注提醒.app/Contents/MacOS/FocusBar
+*.app/Contents/MacOS/FocusBar
 
 # macOS metadata
 .DS_Store
-*.app/.DS_Store
+**/.DS_Store
 
 # Xcode
 *.xcuserdata
 *.xcworkspace
+*.xcodeproj/xcuserdata/
