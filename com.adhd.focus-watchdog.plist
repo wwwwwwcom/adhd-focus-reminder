@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.adhd.focus-watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/wuhool/Library/Application Support/ADHD/watchdog.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <true/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/wuhool/Library/Logs/ADHD/watchdog-stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/wuhool/Library/Logs/ADHD/watchdog-stderr.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>AbandonProcessGroup</key>
+    <true/>
+</dict>
+</plist>

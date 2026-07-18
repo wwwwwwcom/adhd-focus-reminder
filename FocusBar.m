@@ -14,8 +14,9 @@ static const NSTimeInterval kPollInterval   = 2.0;
 // ═══════════════════════════════════════════════════════════════
 static BOOL      gMonitoringEnabled = YES;
 static NSDate   *gSnoozeUntil       = nil;
+static NSDate   *gPauseDate         = nil;  // 记录暂停的日期，用于过夜自动恢复
 static BOOL      gPopupShowing      = NO;
-static BOOL      gNeedsActiveReset  = NO;
+static BOOL      gNeedsActiveReset  = YES;  // 默认 YES：启动后必须等用户操作键盘/鼠标才进入监控
 
 static NSStatusItem *gStatusItem  = nil;
 static NSMenuItem   *gStatusLabel = nil;
@@ -66,6 +67,19 @@ double systemIdleSeconds(void) {
         kCGEventSourceStateCombinedSessionState,
         (CGEventType)(~0u)
     );
+}
+
+// 屏幕锁定检测
+extern CFDictionaryRef CGSessionCopyCurrentDictionary(void);
+
+BOOL isScreenLocked(void) {
+    CFDictionaryRef session = CGSessionCopyCurrentDictionary();
+    if (!session) return NO;  // 获取失败时保守处理：认为未锁定
+    // kCGSessionOnConsoleKey 在 <CoreGraphics/CGSession.h> 中定义为宏
+    CFBooleanRef onConsole = CFDictionaryGetValue(session, kCGSessionOnConsoleKey);
+    BOOL locked = (onConsole == kCFBooleanFalse);
+    CFRelease(session);
+    return locked;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -264,8 +278,35 @@ void buildMenuBar(void) {
 // ═══════════════════════════════════════════════════════════════
 
 void pollIdle(NSTimer *timer) {
+    // 跨天自动恢复：仅在 10:00-19:00 期间恢复，避免午夜弹窗
+    if (!gMonitoringEnabled && gPauseDate) {
+        if (![[NSCalendar currentCalendar] isDate:gPauseDate inSameDayAsDate:[NSDate date]]) {
+            NSInteger hour = [[NSCalendar currentCalendar] component:NSCalendarUnitHour fromDate:[NSDate date]];
+            if (hour >= 10 && hour < 19) {
+                gMonitoringEnabled = YES;
+                gPauseDate = nil;
+                gNeedsActiveReset = YES;  // 等用户先活跃再弹窗
+                updateMenuBar();
+            }
+        }
+        if (!gMonitoringEnabled) return;
+    }
     if (!gMonitoringEnabled) return;
+
+    // 锁屏检测：屏幕锁定时不弹窗，设置为等待活跃状态
+    if (isScreenLocked()) {
+        gNeedsActiveReset = YES;
+        return;
+    }
+
     double idleSec = systemIdleSeconds();
+
+    // 睡眠唤醒检测：空闲时间异常长（超过 6 小时）说明系统刚睡醒，
+    // CGEventSourceSecondsSinceLastEventType 在睡眠期间不会重置
+    if (idleSec > 6 * 3600) {
+        gNeedsActiveReset = YES;
+    }
+
     if (gSnoozeUntil && [gSnoozeUntil timeIntervalSinceNow] <= 0) {
         gSnoozeUntil = nil;
         if (!gPopupShowing) { showPopup((int)idleSec); return; }
@@ -286,11 +327,28 @@ void pollIdle(NSTimer *timer) {
     // status item is already created in main()
     gPollTimer = [NSTimer scheduledTimerWithTimeInterval:kPollInterval repeats:YES
         block:^(NSTimer *t) { pollIdle(t); }];
+
+    // 监听系统唤醒：唤醒后要求用户先活跃才弹窗（防止锁屏下误弹）
+    [[[NSWorkspace sharedWorkspace] notificationCenter] addObserverForName:NSWorkspaceDidWakeNotification
+        object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *n) {
+        gNeedsActiveReset = YES;
+    }];
+
+    // 监听屏幕休眠：屏幕关闭时标记需要重置（防止 display sleep 后误弹）
+    [[[NSWorkspace sharedWorkspace] notificationCenter] addObserverForName:NSWorkspaceScreensDidSleepNotification
+        object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *n) {
+        gNeedsActiveReset = YES;
+    }];
 }
 
 - (void)toggleMonitoring:(id)sender {
     gMonitoringEnabled = !gMonitoringEnabled;
-    if (!gMonitoringEnabled) { closePopup(); gSnoozeUntil = nil; gNeedsActiveReset = NO; }
+    if (!gMonitoringEnabled) {
+        closePopup(); gSnoozeUntil = nil; gNeedsActiveReset = NO;
+        gPauseDate = [NSDate date];
+    } else {
+        gPauseDate = nil;
+    }
     updateMenuBar();
 }
 
@@ -312,7 +370,7 @@ void pollIdle(NSTimer *timer) {
             closePopup(); gNeedsActiveReset = YES;
             if ([action isEqualToString:@"snooze"])
                 gSnoozeUntil = [NSDate dateWithTimeIntervalSinceNow:kSnoozeDuration];
-            else if ([action isEqualToString:@"pause"]) { gMonitoringEnabled = NO; updateMenuBar(); }
+            else if ([action isEqualToString:@"pause"]) { gMonitoringEnabled = NO; gPauseDate = [NSDate date]; updateMenuBar(); }
         });
     }
 }
